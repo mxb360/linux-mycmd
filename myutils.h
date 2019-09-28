@@ -25,6 +25,26 @@
 #define WHITLE      7
 #define DEF_COLOR   8
 
+#define FSTR_BLACK       "\033[30m"
+#define FSTR_RED         "\033[31m"
+#define FSTR_GREEN       "\033[32m"
+#define FSTR_YELLOW      "\033[33m"
+#define FSTR_BLUE        "\033[34m"
+#define FSTR_PURPLE      "\033[35m"
+#define FSTR_CYGN        "\033[36m"
+#define FSTR_WHITLE      "\033[37m"
+#define FSTR_DEF_COLOR   "\033[0m"
+
+#define BSTR_BLACK       "\033[40m"
+#define BSTR_RED         "\033[41m"
+#define BSTR_GREEN       "\033[42m"
+#define BSTR_YELLOW      "\033[43m"
+#define BSTR_BLUE        "\033[44m"
+#define BSTR_PURPLE      "\033[45m"
+#define BSTR_CYGN        "\033[46m"
+#define BSTR_WHITLE      "\033[47m"
+#define BSTR_DEF_COLOR   "\033[0m"
+
 /* myutils config */
 void myutils_set_name(const char *name);
 const char *myutils_get_name(void);
