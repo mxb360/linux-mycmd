@@ -35,10 +35,8 @@ void mymsg(int type, int _errno, int status, const char *errformat, ...);
 #define myfatal(_errno, status, format...)      mymsg(FATAL, _errno, status, ##format)
 #define myerror(_errno, status, format...)      mymsg(ERROR, _errno, status, ##format)
 
-
 /* myutils color */
 typedef int color_t;
 
 void myfcolor(FILE *fp, color_t color);
 void mybcolor(FILE *fp, color_t color);
-
