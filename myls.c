@@ -23,6 +23,8 @@ struct myls_cmdline_cfg_t {
     bool print_directory_self;
     bool print_inode;
     bool print_blocks_size;
+    bool print_classify;
+    bool print_exec_type;
     bool sort_reverse;
     int  sort_by;
 
@@ -54,21 +56,29 @@ void uasge(void)
     printf("选项：\n");
     printf("  -a, --all           不隐藏任何以. 开始的项目\n");
     printf("  -A, --almost-all    列出除. 及.. 以外的任何项目\n");
+    printf("  -C                  多列输出，在标准ls中，这是默认的，但本软件暂不支持多列输出\n");
+    printf("      --color=WHEN    带颜色的输出，WHEN可以取值auto，always，yes，never，no，默认auto\n");
+    printf("                        auto, always, yes没有区别，表示使用颜色；\n");
+    printf("                        no, never没有区别，表示不使用颜色\n");
+    printf("                        可执行文件：绿色  目录：蓝色\n");
+    printf("                        因此在本软件中，该选项会被忽略\n");
     printf("  -d, --directory     列出目录自身信息，而不是目录下的内容\n");
     printf("  -f                  不排序，启用-aU，禁用-ls --color\n");
+    printf("  -F, --classify      在每个输出项后追加文件的类型标识符\n");
+    printf("                        包括：可执行*  目录/  符号链接@  命令管道|  套接字=\n");
+    printf("      --file-type     同上，在每个输出项后追加文件的类型标识符，但是不输出* \n");
+    printf("      --help          显示此帮助信息并退出\n");
     printf("  -i, --inode         打印文件节点号\n");
     printf("  -l                  使用较长的格式列出更多的信息\n");
     printf("  -s, --size          以块数形式显示每个文件分配的尺寸\n");
     printf("  -S                  按照文件名对输出排序\n");
+    printf("      --sort=WORD     设置输出的排序方式。WORD可取none(-U) size(-S) time(-T)\n");
+    printf("                        默认的排序方式是按文件名排序（不区分大小写）\n");
     printf("  -r, --reverse       按照指定的排序方式逆序输出\n");
     printf("  -T                  按照文件创建时间对输出排序\n");
     printf("  -U                  不对输出进行排序\n");
-    printf("  -1                  按照每个文件占一行的格式输出（目前仅支持此方式，所以是默认行为）\n");
-    printf("      --sort=WORD     设置输出的排序方式。WORD可取none(-U) size(-S) time(-T)\n");
-    printf("                      默认的排序方式是按文件名排序（不区分大小写）\n");
-    printf("      --color=WHEN    带颜色的输出，WHEN可以取值yes, no；默认值是yes\n");
-    printf("      --help          显示此帮助信息并退出\n");
     printf("      --version       显示版本信息并退出\n");
+    printf("  -1                  按照每个文件占一行的格式输出（目前仅支持此方式，所以是默认行为）\n");
 
     printf("\n");
     printf("退出状态：\n");
@@ -98,6 +108,8 @@ void default_cfg(void)
     myls_cmdline_cfg.print_inode = false;
     myls_cmdline_cfg.print_directory_self = false;
     myls_cmdline_cfg.print_blocks_size = false;
+    myls_cmdline_cfg.print_classify = false;
+    myls_cmdline_cfg.print_exec_type = false;
     myls_cmdline_cfg.sort_reverse = false;
     myls_cmdline_cfg.sort_by = SORT_BY_NAME;
 }
@@ -107,7 +119,7 @@ void parse_cmdline(int argc, char *argv[])
 {
     int index, lopt;
 
-    const char *short_options = "aAdfilrsStUX1";
+    const char *short_options = "aAdfFilrsStUX1";
     const struct option long_options[] = {
         {"all", no_argument, NULL, 'a'},
         {"almost-all", no_argument, NULL, 'A'},
@@ -115,10 +127,12 @@ void parse_cmdline(int argc, char *argv[])
         {"reverse", no_argument, NULL, 'r'},
         {"inode", no_argument, NULL, 'i'},
         {"size", no_argument, NULL, 's'},
+        {"classify", no_argument, NULL, 'F'},
         {"help", no_argument, &lopt, 0},
         {"version", no_argument, &lopt, 1},
         {"color", optional_argument, &lopt, 2},
         {"sort", required_argument, &lopt, 3},
+        {"file-type", no_argument, &lopt, 4},
         {NULL, 0, NULL, 0},
     };
 
@@ -140,6 +154,10 @@ void parse_cmdline(int argc, char *argv[])
             case 't': myls_cmdline_cfg.sort_by = SORT_BY_TIME;      break;
             case 'X': myls_cmdline_cfg.sort_by = SORT_BY_EXTENSION; break;
             case '1':                                               break;
+            case 'F': 
+                myls_cmdline_cfg.print_classify = true;
+                myls_cmdline_cfg.print_exec_type = true;
+                break;
             case 'f': 
                 myls_cmdline_cfg.sort_by = SORT_BY_NONE; break;
                 myls_cmdline_cfg.list_all = true;
@@ -155,26 +173,26 @@ void parse_cmdline(int argc, char *argv[])
             /* 下面是长选项 */
             case 0:
                 switch (lopt) {
-                    case 0:
+                    case 0:         /* --help */
                         uasge();
                         exit(0);
-                    case 1:
+                    case 1:         /* --version */
                         version();
                         exit(0);
-                    case 2:
+                    case 2:         /* --color= */
                         if (optarg == NULL)
                             myls_cmdline_cfg.use_color = true;
-                        else if (!strcmp(optarg, "yes"))
+                        else if (!strcmp(optarg, "auto") || !strcmp(optarg, "always") || !strcmp(optarg, "yes"))
                             myls_cmdline_cfg.use_color = true;
-                        else if (!strcmp(optarg, "no"))
+                        else if (!strcmp(optarg, "no") || !strcmp(optarg, "never") || !strcmp(optarg, "no"))
                             myls_cmdline_cfg.use_color = false;
                         else {
-                            myerror(0, 0, "选项\"--%s\"的参数参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
+                            myerror(0, 0, "选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
                                 long_options[index].name, optarg, argv[0]);
                             exit(2);
                         }
                         break;
-                    case 3:
+                    case 3:         /* --sort= */
                         if (!strcmp(optarg, "none"))
                             myls_cmdline_cfg.sort_by = SORT_BY_NONE;
                         else if (!strcmp(optarg, "size"))
@@ -188,6 +206,10 @@ void parse_cmdline(int argc, char *argv[])
                                 long_options[index].name, optarg, argv[0]);
                             exit(2);
                         }
+                    case 4:         /* --file-type */
+                        myls_cmdline_cfg.print_exec_type = false;
+                        myls_cmdline_cfg.print_classify = true;
+                        break;
                 }
                 break;
         }
@@ -386,20 +408,23 @@ void myls_files(const char *name, struct stat *st)
 
     /* 获取文件权限 */
     char str[11] = "----------";
+    char classify = ' ';
     int mode = st->st_mode;
 
     if (mode & S_IRUSR)     str[1] = 'r';               /* 用户的三个属性 */
     if (mode & S_IWUSR)     str[2] = 'w';
-    if (mode & S_IXUSR)     str[3] = 'x', color = GREEN;
+    if (mode & S_IXUSR)     str[3] = 'x', color = GREEN, classify = '*';
     if (mode & S_IRGRP)     str[4] = 'r';               /* 组的三个属性   */
     if (mode & S_IWGRP)     str[5] = 'w';
     if (mode & S_IXGRP)     str[6] = 'x';
     if (mode & S_IROTH)     str[7] = 'r';               /* 其他人的三个属性 */
     if (mode & S_IWOTH)     str[8] = 'w';
     if (mode & S_IXOTH)     str[9] = 'x';
-    if (S_ISDIR(mode))      str[0] = 'd', color = BLUE; /* 文件夹        */
+    if (S_ISDIR(mode))      str[0] = 'd', color = BLUE, classify = '/'; /* 文件夹        */
     if (S_ISCHR(mode))      str[0] = 'c';               /* 字符设备      */
     if (S_ISBLK(mode))      str[0] = 'b';               /* 块设备        */
+    if (S_ISLNK(mode))      classify = '@';
+    if (S_ISFIFO(mode))     classify = '|';
 
     /* 输出文件节点号 */
     if (myls_cmdline_cfg.print_inode)
@@ -420,15 +445,19 @@ void myls_files(const char *name, struct stat *st)
         struct passwd *pwd = getpwuid(st->st_uid);
 
         printf("%s %s %2ld %5ld %s ", str, pwd->pw_name, st->st_nlink, st->st_size, time_buf);
-        /* 颜色区分不同属性的文件/目录 */
-        myfcolor(stdout, color);
-        printf("%s\n", name);
-    } else {
-        /* 仅仅输出文件名 */
-        myfcolor(stdout, color);
-        printf("%s\n", name);
     }
+
+    /* 颜色区分不同属性的文件/目录 */
+    myfcolor(stdout, color);
+    printf("%s", name);
+
+    /* 如果指定类型标记（-F, --classify），则输出类型标记 */
+    if (myls_cmdline_cfg.print_classify && classify != '*')
+        putchar(classify);
+    else if (myls_cmdline_cfg.print_exec_type && classify == '*')
+        putchar(classify);
     myfcolor(stdout, DEF_COLOR);
+    putchar('\n');
 }
 
 /* 输出当前扫描的目录的所有文件信息 */
