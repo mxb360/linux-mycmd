@@ -10,4 +10,4 @@ myls: myls.o myutils.o
 	gcc myls.o myutils.o -o bin/myls
 
 clean:
-	rm *.o
+	rm -rf *.o
