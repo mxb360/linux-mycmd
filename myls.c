@@ -32,16 +32,48 @@ struct myls_cmdline_cfg_t {
     int  files_count;
 } myls_cmdline_cfg;
 
+struct word_t {
+    char word[1024];
+    char *_word;
+    char name[256];
+    char time[56];
+    char size[56];
+    char user[256];
+    char link[12];
+    char perm[12];
+    char inode[12];
+    char block[12];
+};
+
+struct word_len_t {
+    int  word;
+    int  name;
+    int  time;
+    int  size;
+    int  user;
+    int  link;
+    int  perm;
+    int  inode;
+    int  block;
+};
+
 /* 全局，用于保存每个文件的名字和属性信息 */
 struct files_t {
-    char name[1024];
-    struct stat st;
+    struct word_t word;
+    struct word_len_t len;
+    const char *color;
+    const char *classify;
+    time_t time;
+    long   file_size;
 };
 
 /* 全局，用于保存当前扫描的目录中所有的文件信息 */
 struct myls_t {
     char cwd[1024];
+    char **lines;
+    int lines_count;
     struct files_t *files;
+    struct word_len_t max_len;
     int files_count;
     int max_files_count;
     int error;
@@ -223,37 +255,6 @@ void parse_cmdline(int argc, char *argv[])
     myls_cmdline_cfg.files_count = argc - optind;
 }
 
-/* 将当前获得的文件添加到文件列表中。
- * 添加之前会获取此文件的属性信息
- * 由于数据的长度未知，这里采取数组自动增长的策略
- */
-void add_files(const char *files)
-{
-    /* 还没有给数组申请空间，尝试申请一段空间 */
-    if (myls.max_files_count == 0) {
-        if ((myls.files = (struct files_t *)malloc(MALLOC_SIZE * sizeof(struct files_t))) == NULL)
-            myfatal(errno, 2, "内存申请错误");
-        myls.max_files_count += MALLOC_SIZE;
-    }
-
-    /* 当前数组的空间已经用完，尝试重新申请一段更长的空间 */
-    if (myls.max_files_count <= myls.files_count) {
-        if ((myls.files = (struct files_t *)realloc(myls.files, (myls.max_files_count + MALLOC_SIZE) * sizeof(struct files_t))) == NULL)
-            myfatal(errno, 2, "内存申请错误");
-        myls.max_files_count += MALLOC_SIZE;
-    }
-
-    /* 将文件名和文件属性添加到数组中，如果属性获取失败，则输出错误信息并忽略该文件 */
-    strcpy(myls.files[myls.files_count].name, files);
-    if (stat(files, &myls.files[myls.files_count].st) < 0) {
-        myerror(errno, 0, "无法获取\"%s\"的属性", files);
-        myls.error = 1;
-        return;
-    }
-
-    myls.files_count++;
-}
-
 /* 辅助函数：将字符串转换为小写 */
 char *_strlwr(char *str)
 {
@@ -302,8 +303,8 @@ int sort_by_name_campare(const void *a, const void *b)
     int res;
 
     /* 备份文件名 */
-    strcpy(buf1, ((struct files_t *)a)->name);
-    strcpy(buf2, ((struct files_t *)b)->name);
+    strcpy(buf1, ((struct files_t *)a)->word.name);
+    strcpy(buf2, ((struct files_t *)b)->word.name);
 
     /* 将文件名转化为小写，再比较棋大小（实现不区分大小写的字符串比较） */
     res = strcmp(_strlwr(buf1), _strlwr(buf2));
@@ -316,7 +317,7 @@ int sort_by_name_campare(const void *a, const void *b)
 int sort_by_size_campare(const void *a, const void *b)
 {
     /* 根据文件大小比较结果 */
-    int res = ((struct files_t *)a)->st.st_size - ((struct files_t *)b)->st.st_size;
+    int res = ((struct files_t *)a)->file_size - ((struct files_t *)b)->file_size;
 
     /* 如果文件大小一样，则按照文件名排序 */
     if (res == 0)
@@ -330,7 +331,7 @@ int sort_by_size_campare(const void *a, const void *b)
 int sort_by_time_campare(const void *a, const void *b)
 {
     /* 根据文件创建时间比较结果 */
-    int res = ((struct files_t *)a)->st.st_ctime - ((struct files_t *)b)->st.st_ctime;
+    int res = ((struct files_t *)a)->time - ((struct files_t *)b)->time;
 
     /* 如果文件创建时间一样，则按照文件名排序 */
     if (res == 0)
@@ -348,10 +349,10 @@ int sort_by_extension_campare(const void *a, const void *b)
     char *ext1 = NULL, *ext2 = NULL;
 
     /* 获取两个文件的后缀名 */
-    for (char *name = ((struct files_t *)a)->name; *name; name++)
+    for (char *name = ((struct files_t *)a)->word.name; *name; name++)
         if (*name == '.')
             ext1 = name;
-    for (char *name = ((struct files_t *)b)->name; *name; name++)
+    for (char *name = ((struct files_t *)b)->word.name; *name; name++)
         if (*name == '.')
             ext2 = name;
 
@@ -402,70 +403,220 @@ void sort_files(void)
 }
 
 /* 按照命令行指定的格式输出列表指定位置的文件 */
-void myls_files(const char *name, struct stat *st)
+void stat_to_word(struct files_t *files, struct word_len_t *max_len, struct stat *st)
 {
-    color_t color = DEF_COLOR;
+    const char *color = FSTR_DEF_COLOR;
+    const char *classify = "";
 
     /* 获取文件权限 */
     char str[11] = "----------";
-    char classify = ' ';
+    
     int mode = st->st_mode;
 
-    if (mode & S_IRUSR)     str[1] = 'r';               /* 用户的三个属性 */
-    if (mode & S_IWUSR)     str[2] = 'w';
-    if (mode & S_IXUSR)     str[3] = 'x', color = GREEN, classify = '*';
-    if (mode & S_IRGRP)     str[4] = 'r';               /* 组的三个属性   */
-    if (mode & S_IWGRP)     str[5] = 'w';
-    if (mode & S_IXGRP)     str[6] = 'x';
-    if (mode & S_IROTH)     str[7] = 'r';               /* 其他人的三个属性 */
-    if (mode & S_IWOTH)     str[8] = 'w';
-    if (mode & S_IXOTH)     str[9] = 'x';
-    if (S_ISDIR(mode))      str[0] = 'd', color = BLUE, classify = '/'; /* 文件夹        */
-    if (S_ISCHR(mode))      str[0] = 'c';               /* 字符设备      */
-    if (S_ISBLK(mode))      str[0] = 'b';               /* 块设备        */
-    if (S_ISLNK(mode))      classify = '@';
-    if (S_ISFIFO(mode))     classify = '|';
+    if (mode & S_IRUSR)
+        str[1] = 'r';               /* 用户的三个属性 */
+    if (mode & S_IWUSR)
+        str[2] = 'w';
+    if (mode & S_IXUSR)
+        str[3] = 'x', color = FSTR_GREEN, classify = "*";
+    if (mode & S_IRGRP)
+        str[4] = 'r';               /* 组的三个属性   */
+    if (mode & S_IWGRP)
+        str[5] = 'w';
+    if (mode & S_IXGRP)
+        str[6] = 'x';
+    if (mode & S_IROTH)
+        str[7] = 'r';               /* 其他人的三个属性 */
+    if (mode & S_IWOTH)
+        str[8] = 'w';
+    if (mode & S_IXOTH)
+        str[9] = 'x';
+    if (S_ISDIR(mode))
+        str[0] = 'd', color = FSTR_BLUE, classify = "/"; /* 文件夹        */
+    else if (S_ISCHR(mode))
+        str[0] = 'c';               /* 字符设备      */
+    else if (S_ISBLK(mode))
+        str[0] = 'b';               /* 块设备        */
+    else if (S_ISLNK(mode))
+        classify = "@";
+    else if (S_ISFIFO(mode))
+        classify = "|";
+
+    files->len.perm = 0;
+    if (myls_cmdline_cfg.list_long) 
+        files->len.perm = sprintf(files->word.perm, "%s", str);
+    if (files->len.perm > max_len->perm)
+        max_len->perm = files->len.perm;
 
     /* 输出文件节点号 */
-    if (myls_cmdline_cfg.print_inode)
-        printf("%ld ", st->st_ino);
+    files->len.inode = 0;
+    if (myls_cmdline_cfg.print_inode) 
+        files->len.inode = sprintf(files->word.inode, "%ld", st->st_ino);
+    if (files->len.inode > max_len->inode)
+        max_len->inode = files->len.inode;
 
+    files->len.block = 0;
     if (myls_cmdline_cfg.print_blocks_size)
-        printf("%3ld ", st->st_blocks);
-
-    /* 如果需要输出详细信息，则依次输出文件权限，文件所有者，文件硬链接个数，文件大小，文件修改日期，文件名 */
+        files->len.block = sprintf(files->word.block, "%ld", st->st_blocks);
+    if (files->len.block > max_len->block)
+        max_len->block = files->len.block;
+    
+    /* */
+    files->len.time = 0;
+    files->time = st->st_ctime;
     if (myls_cmdline_cfg.list_long) {
         /* 格式化文件修改时间 */
         struct tm *ptr;
-        char time_buf[30];
         ptr = localtime(&st->st_ctime);
-        strftime(time_buf, 30, "%b %d %G %H:%M", ptr);
+        files->len.time = strftime(files->word.time, 30, "%b %d %G %H:%M", ptr);
+    }
+    if (files->len.time > max_len->time)
+        max_len->time = files->len.time;
 
+    files->len.size = 0;
+    files->file_size = st->st_size;
+    if (myls_cmdline_cfg.list_long) 
+       files->len.size = sprintf(files->word.size, "%ld", st->st_size);
+    if (files->len.size > max_len->size)
+        max_len->size = files->len.size;
+
+    files->len.link = 0;
+    if (myls_cmdline_cfg.list_long) 
+       files->len.link = sprintf(files->word.link, "%ld", st->st_nlink);
+    if (files->len.link > max_len->link)
+        max_len->link = files->len.link;
+
+    files->len.user = 0;
+    if (myls_cmdline_cfg.list_long) {
         /* 获取文件所有者的用户名 */
         struct passwd *pwd = getpwuid(st->st_uid);
+       files->len.user = sprintf(files->word.user, "%s", pwd->pw_name);
+    }
+    if (files->len.user > max_len->user)
+        max_len->user = files->len.user;
 
-        printf("%s %s %2ld %5ld %s ", str, pwd->pw_name, st->st_nlink, st->st_size, time_buf);
+    files->color = myls_cmdline_cfg.use_color ? color : "";
+
+    files->classify = "";
+    if (myls_cmdline_cfg.print_classify && classify[0] != '*')
+        files->classify = classify;
+    else if (myls_cmdline_cfg.print_exec_type && classify[0] == '*')
+        files->classify = classify;
+}
+
+void merge_word(struct files_t *files, struct word_len_t *max_len)
+{
+    int len = 0;
+    char *p = files->word.word;
+
+    if (myls_cmdline_cfg.print_inode) 
+        len += sprintf(p + len, "%*s ", max_len->inode, files->word.inode);
+
+    if (myls_cmdline_cfg.print_blocks_size)
+        len += sprintf(p + len, "%*s ", max_len->block, files->word.block);
+
+    if (myls_cmdline_cfg.list_long)
+        len += sprintf(p + len, "%*s ", max_len->perm, files->word.perm);
+
+    if (myls_cmdline_cfg.list_long)
+        len += sprintf(p + len, "%*s ", max_len->link, files->word.link);
+
+    if (myls_cmdline_cfg.list_long)
+        len += sprintf(p + len, "%*s ", max_len->user, files->word.user); 
+
+    if (myls_cmdline_cfg.list_long)
+        len += sprintf(p + len, "%*s ", max_len->size, files->word.size);
+
+    if (myls_cmdline_cfg.list_long)
+        len += sprintf(p + len, "%*s ", max_len->time, files->word.time);
+
+    len += sprintf(p + len, "%s%-*s%s%s  ", files->color, max_len->name, files->word.name, files->classify, FSTR_DEF_COLOR);
+
+    files->len.word = len;
+    if (max_len->word < files->len.word)
+        max_len->word = files->len.word;
+}
+
+char **merge_cols(int cols, int *n, struct files_t *files, int files_count, struct word_len_t *max_len)
+{
+    int line = files_count / cols + !!(files_count % cols);
+    char **lines = (char **)malloc(line * sizeof(char *));
+    if (lines == NULL)
+        myfatal(errno, 2, "内存申请错误");
+    memset(lines, 0, line * sizeof(char *));
+
+    for (int i = 0; i < files_count; i++) {
+        int index = i % line;
+
+        if (!lines[index]) {
+            if (!(lines[index] = (char *)malloc(10 + cols * max_len->word)))
+                myfatal(errno, 2, "内存申请错误");
+            lines[index][0] = 0;
+        }
+
+        strcat(lines[index], files[i].word.word);
     }
 
-    /* 颜色区分不同属性的文件/目录 */
-    myfcolor(stdout, color);
-    printf("%s", name);
-
-    /* 如果指定类型标记（-F, --classify），则输出类型标记 */
-    if (myls_cmdline_cfg.print_classify && classify != '*')
-        putchar(classify);
-    else if (myls_cmdline_cfg.print_exec_type && classify == '*')
-        putchar(classify);
-    myfcolor(stdout, DEF_COLOR);
-    putchar('\n');
+    *n = line;
+    return lines;
 }
 
 /* 输出当前扫描的目录的所有文件信息 */
 void myls_dir(const char *dir)
 {
+    //int cols = 2;
+    //int c = myls.files_count / cols + !!(myls.files_count % cols);
+
     sort_files();
-    for (int i = 0; i < myls.files_count; i++)
-        myls_files(myls.files[i].name, &myls.files[i].st);
+
+    for (int i = 0; i < myls.files_count; i++) {
+        merge_word(myls.files + (i), &myls.max_len);
+    }
+
+    myls.lines = merge_cols(1, &myls.lines_count, myls.files, myls.files_count, &myls.max_len);
+
+    for (int i = 0; i < myls.lines_count; i++) {
+        printf("%s\n", myls.lines[i]);
+    }
+}
+
+/* 将当前获得的文件添加到文件列表中。
+ * 添加之前会获取此文件的属性信息
+ * 由于数据的长度未知，这里采取数组自动增长的策略
+ */
+void add_files(const char *files)
+{
+    /* 还没有给数组申请空间，尝试申请一段空间 */
+    if (myls.max_files_count == 0) {
+        if ((myls.files = (struct files_t *)malloc(MALLOC_SIZE * sizeof(struct files_t))) == NULL)
+            myfatal(errno, 2, "内存申请错误");
+        myls.max_files_count += MALLOC_SIZE;
+    }
+
+    /* 当前数组的空间已经用完，尝试重新申请一段更长的空间 */
+    if (myls.max_files_count <= myls.files_count) {
+        if ((myls.files = (struct files_t *)realloc(myls.files, (myls.max_files_count + MALLOC_SIZE) * sizeof(struct files_t))) == NULL)
+            myfatal(errno, 2, "内存申请错误");
+        myls.max_files_count += MALLOC_SIZE;
+    }
+
+    struct stat st;
+
+    /* 获取文件属性 */
+    if (stat(files, &st) < 0) {
+        myerror(errno, 0, "无法获取\"%s\"的属性", files);
+        myls.error = 1;
+        return;
+    }
+
+    /* 将文件名性添加到数组中 */
+    strcpy(myls.files[myls.files_count].word.name, files);
+    myls.files[myls.files_count].len.name = strlen(files);
+    if (myls.max_len.name < myls.files[myls.files_count].len.name)
+        myls.max_len.name = myls.files[myls.files_count].len.name;
+
+    stat_to_word(&myls.files[myls.files_count], &myls.max_len, &st);
+    myls.files_count++;
 }
 
 int main(int argc, char *argv[])
