@@ -45,6 +45,8 @@
 #define BSTR_WHITLE      "\033[47m"
 #define BSTR_DEF_COLOR   "\033[0m"
 
+#define HIGHLIGHT        "\033[1m"
+
 /* myutils config */
 void myutils_set_name(const char *name);
 const char *myutils_get_name(void);
