@@ -33,7 +33,10 @@ struct myls_cmdline_cfg_t {
     bool print_blocks_size;
     bool print_classify;
     bool print_exec_type;
+    bool print_dereference;
     bool sort_reverse;
+    bool human_readable;
+    int  powers;
     int  sort_by;
 
     char **files;
@@ -96,30 +99,33 @@ void usage(const char *name)
     printf("列出“文件”的信息（默认当前目录）\n\n");
 
     printf("选项：\n");
-    printf("  -a, --all           不隐藏任何以. 开始的项目\n");
-    printf("  -A, --almost-all    列出除. 及.. 以外的任何项目\n");
-    printf("  -C                  多列输出，这是默认的，除非有-l或者-1\n");
-    printf("      --color=WHEN    带颜色的输出，WHEN可以取值auto，always，yes，never，no，默认auto\n");
-    printf("                        auto, always, yes没有区别，表示使用颜色；\n");
-    printf("                        no, never没有区别，表示不使用颜色\n");
-    printf("                        可执行文件：绿色  目录：蓝色\n");
-    printf("  -d, --directory     列出目录自身信息，而不是目录下的内容\n");
-    printf("  -f                  不排序，启用-aU，禁用-ls --color\n");
-    printf("  -F, --classify      在每个输出项后追加文件的类型标识符\n");
-    printf("                        包括：可执行*  目录/  符号链接@  命令管道|  套接字=\n");
-    printf("      --file-type     同上，在每个输出项后追加文件的类型标识符，但是不输出* \n");
-    printf("      --help          显示此帮助信息并退出\n");
-    printf("  -i, --inode         打印文件节点号\n");
-    printf("  -l                  使用较长的格式列出更多的信息\n");
-    printf("  -s, --size          以块数形式显示每个文件分配的尺寸\n");
-    printf("  -S                  按照文件名对输出排序\n");
-    printf("      --sort=WORD     设置输出的排序方式。WORD可取none(-U) size(-S) time(-T)\n");
-    printf("                        默认的排序方式是按文件名排序（不区分大小写）\n");
-    printf("  -r, --reverse       按照指定的排序方式逆序输出\n");
-    printf("  -T                  按照文件创建时间对输出排序\n");
-    printf("  -U                  不对输出进行排序\n");
-    printf("      --version       显示版本信息并退出\n");
-    printf("  -1                  按照每个文件占一行的格式输出\n");
+    printf("  -a, --all             不隐藏任何以. 开始的项目\n");
+    printf("  -A, --almost-all      列出除. 及.. 以外的任何项目\n");
+    printf("  -C                    多列输出，这是默认的，除非有-l或者-1\n");
+    printf("      --color=WHEN      带颜色的输出，WHEN可以取值auto，always，yes，never，no，默认auto\n");
+    printf("                          auto, always, yes没有区别，表示使用颜色；\n");
+    printf("                          no, never没有区别，表示不使用颜色\n");
+    printf("                          可执行文件：绿色  目录：蓝色\n");
+    printf("  -d, --directory       列出目录自身信息，而不是目录下的内容\n");
+    printf("  -f                    不排序，启用-aU，禁用-ls --color\n");
+    printf("  -F, --classify        在每个输出项后追加文件的类型标识符\n");
+    printf("                          包括：可执行*  目录/  符号链接@  命令管道|  套接字=\n");
+    printf("      --file-type       同上，但是不输出* \n");
+    printf("  -h, --human-readable  当有-l或者-s时，按住易读的方式打印大小，如：1K 234M 2G\n");
+    printf("      --si              同上，但是按1000换算单位，而不是1024\n");
+    printf("  -i, --inode           打印文件节点号\n");
+    printf("  -l                    使用较长的格式列出更多的信息\n");
+    printf("  -L, --dereference     对于符号链接，显示链接指向的文件信息，而不是链接文件本身\n");
+    printf("  -s, --size            以块数形式显示每个文件分配的尺寸\n");
+    printf("  -S                    按照文件名对输出排序\n");
+    printf("      --sort=WORD       设置输出的排序方式。WORD可取none(-U) size(-S) time(-T)\n");
+    printf("                          默认的排序方式是按文件名排序（不区分大小写）\n");
+    printf("  -r, --reverse         按照指定的排序方式逆序输出\n");
+    printf("  -T                    按照文件创建时间对输出排序\n");
+    printf("  -U                    不对输出进行排序\n");
+    printf("  -1                    按照每个文件占一行的格式输出\n");
+    printf("      --help            显示此帮助信息并退出\n");
+    printf("      --version         显示版本信息并退出\n");
 
     printf("\n");
     printf("退出状态：\n");
@@ -146,16 +152,6 @@ void version(void)
 void default_cfg(void)
 {
     myls_cmdline_cfg.use_color = true;
-    myls_cmdline_cfg.list_all = false;
-    myls_cmdline_cfg.list_almost_all = false;
-    myls_cmdline_cfg.list_long = false;
-    myls_cmdline_cfg.list_by_line = false;
-    myls_cmdline_cfg.print_inode = false;
-    myls_cmdline_cfg.print_directory_self = false;
-    myls_cmdline_cfg.print_blocks_size = false;
-    myls_cmdline_cfg.print_classify = false;
-    myls_cmdline_cfg.print_exec_type = false;
-    myls_cmdline_cfg.sort_reverse = false;
     myls_cmdline_cfg.sort_by = SORT_BY_NAME;
 }
 
@@ -164,7 +160,7 @@ void parse_cmdline(int argc, char *argv[])
 {
     int index, lopt;
 
-    const char *short_options = "aACdfFilrsStUX1";
+    const char *short_options = "aACdfFhilLrsStUX1";
     const struct option long_options[] = {
         {"all", no_argument, NULL, 'a'},
         {"almost-all", no_argument, NULL, 'A'},
@@ -173,11 +169,14 @@ void parse_cmdline(int argc, char *argv[])
         {"inode", no_argument, NULL, 'i'},
         {"size", no_argument, NULL, 's'},
         {"classify", no_argument, NULL, 'F'},
+        {"human-readable", no_argument, NULL, 'h'},
+        {"dereference", no_argument, NULL, 'L'},
         {"help", no_argument, &lopt, 0},
         {"version", no_argument, &lopt, 1},
         {"color", optional_argument, &lopt, 2},
         {"sort", required_argument, &lopt, 3},
         {"file-type", no_argument, &lopt, 4},
+        {"si", no_argument, &lopt, 5},
         {NULL, 0, NULL, 0},
     };
 
@@ -209,11 +208,18 @@ void parse_cmdline(int argc, char *argv[])
             myls_cmdline_cfg.use_color = false;
             myls_cmdline_cfg.list_long = false;
             myls_cmdline_cfg.print_blocks_size = false;
+        case 'h':
+            myls_cmdline_cfg.human_readable = true;
+            myls_cmdline_cfg.powers = 1024;
+            break;
         case 'i':
             myls_cmdline_cfg.print_inode = true;
             break;
         case 'l':
             myls_cmdline_cfg.list_long = true;
+            break;
+        case 'L':
+            myls_cmdline_cfg.print_dereference = true;
             break;
         case 'r':
             myls_cmdline_cfg.sort_reverse = true;
@@ -280,6 +286,10 @@ void parse_cmdline(int argc, char *argv[])
             case 4:         /* --file-type */
                 myls_cmdline_cfg.print_exec_type = false;
                 myls_cmdline_cfg.print_classify = true;
+                break;
+            case 5:
+                myls_cmdline_cfg.human_readable = true;
+                myls_cmdline_cfg.powers = 1000;
                 break;
             default:
                 break;
@@ -499,8 +509,20 @@ void stat_to_word(struct files_t *files, struct word_len_t *max_len, struct stat
         max_len->inode = files->len.inode;
 
     files->len.block = 0;
-    if (myls_cmdline_cfg.print_blocks_size)
-        files->len.block = sprintf(files->word.block, "%ld", st->st_blocks);
+    if (myls_cmdline_cfg.print_blocks_size) {
+        /* 转换为人类易读的大小表示 */
+        if (myls_cmdline_cfg.human_readable && st->st_blocks > myls_cmdline_cfg.powers) {
+            int n = 0;
+            float size = st->st_blocks * st->st_blksize;
+            while (size > myls_cmdline_cfg.powers && n < 5) {
+                size /= myls_cmdline_cfg.powers;
+                n++;
+            }
+            files->len.block = sprintf(files->word.block, "%.1f%c", size, " KMGT"[n]);
+        } else
+            files->len.block = sprintf(files->word.block, "%ld", st->st_blocks / 2);
+    }
+        
     if (files->len.block > max_len->block)
         max_len->block = files->len.block;
     
@@ -518,8 +540,20 @@ void stat_to_word(struct files_t *files, struct word_len_t *max_len, struct stat
 
     files->len.size = 0;
     files->file_size = st->st_size;
-    if (myls_cmdline_cfg.list_long) 
-       files->len.size = sprintf(files->word.size, "%ld", st->st_size);
+    if (myls_cmdline_cfg.list_long) {
+        /* 转换为人类易读的大小表示 */
+        if (myls_cmdline_cfg.human_readable && st->st_size > myls_cmdline_cfg.powers) {
+            int n = 0;
+            float size = st->st_size;
+            while (size > myls_cmdline_cfg.powers && n < 5) {
+                size /= myls_cmdline_cfg.powers;
+                n++;
+            }
+            files->len.size = sprintf(files->word.size, "%.1f%c", size, " KMGT"[n]);
+        } else
+            files->len.size = sprintf(files->word.size, "%ld", st->st_size);
+    }
+       
     if (files->len.size > max_len->size)
         max_len->size = files->len.size;
 
@@ -576,7 +610,7 @@ void merge_word(struct files_t *files, struct word_len_t *max_len)
         len += sprintf(p + len, "%*s ", max_len->time, files->word.time);
 
     if (myls_cmdline_cfg.use_color) 
-        p += sprintf(p + len, "%s", files->color);
+        p += sprintf(p + len, HIGHLIGHT "%s", files->color);
 
     len += sprintf(p + len, "%-*s  ", max_len->name, files->word.name);
     
@@ -658,7 +692,7 @@ void add_files(const char *files)
     struct stat st;
 
     /* 获取文件属性 */
-    if (stat(files, &st) < 0) {
+    if ((myls_cmdline_cfg.print_dereference ? stat : lstat)(files, &st) < 0) {
         myerror(errno, 0, "无法获取\"%s\"的属性", files);
         myls.error = 1;
         return;
