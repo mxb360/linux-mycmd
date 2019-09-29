@@ -676,6 +676,7 @@ void add_files(const char *files)
 
 int main(int argc, char *argv[])
 {
+    myutils_set_name(argv[0]);
     default_cfg();
 
     parse_cmdline(argc, argv);
