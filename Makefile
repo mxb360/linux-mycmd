@@ -1,4 +1,4 @@
-CCFLG = -g -Wall -Werror
+CCFLG = -g -Wall
 
 all: myls
 
