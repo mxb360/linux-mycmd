@@ -5,6 +5,13 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <pwd.h>
+#include<sys/ioctl.h>
+#include<termios.h>
+
+#define VERSION         "1.0"
+#define AUTHOR          "mxb360"
+#define UPDATE_DATE     "2019-9"
+#define PACKAGE         "Linux-MyCmd"
 
 #define MALLOC_SIZE       50
 
@@ -20,6 +27,7 @@ struct myls_cmdline_cfg_t {
     bool list_all;
     bool list_almost_all;
     bool list_long;
+    bool list_by_line;
     bool print_directory_self;
     bool print_inode;
     bool print_blocks_size;
@@ -32,6 +40,7 @@ struct myls_cmdline_cfg_t {
     int  files_count;
 } myls_cmdline_cfg;
 
+/* 保存文件信息每个字段的文本 */
 struct word_t {
     char word[1024];
     char *_word;
@@ -45,6 +54,7 @@ struct word_t {
     char block[12];
 };
 
+/* 保存文件信息每个字段的文本长度 */
 struct word_len_t {
     int  word;
     int  name;
@@ -62,7 +72,6 @@ struct files_t {
     struct word_t word;
     struct word_len_t len;
     const char *color;
-    const char *classify;
     time_t time;
     long   file_size;
 };
@@ -76,19 +85,20 @@ struct myls_t {
     struct word_len_t max_len;
     int files_count;
     int max_files_count;
+    int window_cols;
     int error;
 } myls;
 
-/* 打印使用帮助，用命令行“--help”触发 */
-void uasge(void)
+/* 打印使用帮助，由命令行“--help”触发 */
+void usage(const char *name)
 {
-    printf("用法：%s [选项]... [文件]...\n", myutils_get_name());
+    printf("用法：%s [选项]... [文件]...\n", name);
     printf("列出“文件”的信息（默认当前目录）\n\n");
 
     printf("选项：\n");
     printf("  -a, --all           不隐藏任何以. 开始的项目\n");
     printf("  -A, --almost-all    列出除. 及.. 以外的任何项目\n");
-    printf("  -C                  多列输出，在标准ls中，这是默认的，但本软件暂不支持多列输出\n");
+    printf("  -C                  多列输出，这是默认的，除非有-l或者-1\n");
     printf("      --color=WHEN    带颜色的输出，WHEN可以取值auto，always，yes，never，no，默认auto\n");
     printf("                        auto, always, yes没有区别，表示使用颜色；\n");
     printf("                        no, never没有区别，表示不使用颜色\n");
@@ -110,7 +120,7 @@ void uasge(void)
     printf("  -T                  按照文件创建时间对输出排序\n");
     printf("  -U                  不对输出进行排序\n");
     printf("      --version       显示版本信息并退出\n");
-    printf("  -1                  按照每个文件占一行的格式输出（目前仅支持此方式，所以是默认行为）\n");
+    printf("  -1                  按照每个文件占一行的格式输出\n");
 
     printf("\n");
     printf("退出状态：\n");
@@ -119,15 +129,18 @@ void uasge(void)
     printf("    2  严重问题（列如：无法使用命令行参数）\n");
 
     printf("\n");
-    printf("此软件是Linux-MyCmd包的程序之一，Linux-MyCmd包是GNU CoreUtils程序的简陋的仿写版本。\n");
-    printf("此软件是GNU CoreUtils程序 ls 的简单版本。\n此软件在输出上与 ls 有差异。命令行参数也有差异。\n");
-    printf("作者：mxb360   \n");
+    printf("此软件是" PACKAGE "包的程序之一，" PACKAGE "包是GNU CoreUtils程序的简陋的仿写版本。\n");
+    printf("此软件是GNU CoreUtils程序 ls 的简单版本。\n");
+    printf("此软件在输出颜色，排版上与 ls 有差异。命令行参数仅仅支持部分 ls 命令。\n");
+    printf("作者：" AUTHOR "  " UPDATE_DATE " \n");
+    printf("版本：" VERSION "\n");
 }
 
 /* 打印软件版本信息 */
 void version(void)
 {
-    printf("myls  version 0.0.1\n");
+    printf("myls (" PACKAGE ") version " VERSION "\n");
+    printf("Written by " AUTHOR "  " UPDATE_DATE " \n");
 }
 
 /* 默认的命令行配置：在相应命令行参数未指定时的默认值 */
@@ -137,6 +150,7 @@ void default_cfg(void)
     myls_cmdline_cfg.list_all = false;
     myls_cmdline_cfg.list_almost_all = false;
     myls_cmdline_cfg.list_long = false;
+    myls_cmdline_cfg.list_by_line = false;
     myls_cmdline_cfg.print_inode = false;
     myls_cmdline_cfg.print_directory_self = false;
     myls_cmdline_cfg.print_blocks_size = false;
@@ -151,7 +165,7 @@ void parse_cmdline(int argc, char *argv[])
 {
     int index, lopt;
 
-    const char *short_options = "aAdfFilrsStUX1";
+    const char *short_options = "aACdfFilrsStUX1";
     const struct option long_options[] = {
         {"all", no_argument, NULL, 'a'},
         {"almost-all", no_argument, NULL, 'A'},
@@ -168,82 +182,112 @@ void parse_cmdline(int argc, char *argv[])
         {NULL, 0, NULL, 0},
     };
 
-    while (1) {
-        int c = getopt_long(argc, argv, short_options, long_options, &index);
-        if (c == -1)
-            break;
+    int c = 0;
+    while (c >= 0) {
+        c = getopt_long(argc, argv, short_options, long_options, &index);
         switch (c) {
-            /* 处理短选项 */
-            case 'a': myls_cmdline_cfg.list_all = true;             break;
-            case 'A': myls_cmdline_cfg.list_almost_all = true;      break;
-            case 'd': myls_cmdline_cfg.print_directory_self = true; break;
-            case 'i': myls_cmdline_cfg.print_inode = true;          break;
-            case 'l': myls_cmdline_cfg.list_long = true;            break;
-            case 'r': myls_cmdline_cfg.sort_reverse = true;         break;
-            case 'U': myls_cmdline_cfg.sort_by = SORT_BY_NONE;      break;
-            case 's': myls_cmdline_cfg.print_blocks_size = true;    break;
-            case 'S': myls_cmdline_cfg.sort_by = SORT_BY_SIZE;      break;
-            case 't': myls_cmdline_cfg.sort_by = SORT_BY_TIME;      break;
-            case 'X': myls_cmdline_cfg.sort_by = SORT_BY_EXTENSION; break;
-            case '1':                                               break;
-            case 'F': 
-                myls_cmdline_cfg.print_classify = true;
-                myls_cmdline_cfg.print_exec_type = true;
-                break;
-            case 'f': 
-                myls_cmdline_cfg.sort_by = SORT_BY_NONE; break;
-                myls_cmdline_cfg.list_all = true;
-                myls_cmdline_cfg.use_color = false;
-                myls_cmdline_cfg.list_long = false;
-                myls_cmdline_cfg.print_blocks_size = false;
-                break;
-            /* 错误的选项，错误信息会自动输出，这里仅输出帮助提升信息并退出 */
-            case '?':
-                myerror(0, 0, "命令行参数解析失败，输入\"%s --help\"查看使用帮助", argv[0]);
-                exit(2);
-                break;
-            /* 下面是长选项 */
-            case 0:
-                switch (lopt) {
-                    case 0:         /* --help */
-                        uasge();
-                        exit(0);
-                    case 1:         /* --version */
-                        version();
-                        exit(0);
-                    case 2:         /* --color= */
-                        if (optarg == NULL)
-                            myls_cmdline_cfg.use_color = true;
-                        else if (!strcmp(optarg, "auto") || !strcmp(optarg, "always") || !strcmp(optarg, "yes"))
-                            myls_cmdline_cfg.use_color = true;
-                        else if (!strcmp(optarg, "no") || !strcmp(optarg, "never") || !strcmp(optarg, "no"))
-                            myls_cmdline_cfg.use_color = false;
-                        else {
-                            myerror(0, 0, "选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
-                                long_options[index].name, optarg, argv[0]);
-                            exit(2);
-                        }
-                        break;
-                    case 3:         /* --sort= */
-                        if (!strcmp(optarg, "none"))
-                            myls_cmdline_cfg.sort_by = SORT_BY_NONE;
-                        else if (!strcmp(optarg, "size"))
-                            myls_cmdline_cfg.sort_by = SORT_BY_SIZE;
-                        else if (!strcmp(optarg, "time"))
-                            myls_cmdline_cfg.sort_by = SORT_BY_TIME;
-                        else if (!strcmp(optarg, "extension"))
-                            myls_cmdline_cfg.sort_by = SORT_BY_EXTENSION;
-                        else {
-                            myerror(0, 0, "选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
-                                long_options[index].name, optarg, argv[0]);
-                            exit(2);
-                        }
-                    case 4:         /* --file-type */
-                        myls_cmdline_cfg.print_exec_type = false;
-                        myls_cmdline_cfg.print_classify = true;
-                        break;
+        /* 处理短选项 */
+        case 'a': 
+            myls_cmdline_cfg.list_all = true;
+            break;
+        case 'A': 
+            myls_cmdline_cfg.list_almost_all = true;
+            break;
+        case 'C':
+            myls_cmdline_cfg.list_by_line = false;
+            myls_cmdline_cfg.list_long = false;
+            break;
+        case 'd':
+            myls_cmdline_cfg.print_directory_self = true;
+            break;
+        case 'F': 
+            myls_cmdline_cfg.print_classify = true;
+            myls_cmdline_cfg.print_exec_type = true;
+            break;
+        case 'f': 
+            myls_cmdline_cfg.sort_by = SORT_BY_NONE;
+            myls_cmdline_cfg.list_all = true;
+            myls_cmdline_cfg.use_color = false;
+            myls_cmdline_cfg.list_long = false;
+            myls_cmdline_cfg.print_blocks_size = false;
+        case 'i':
+            myls_cmdline_cfg.print_inode = true;
+            break;
+        case 'l':
+            myls_cmdline_cfg.list_long = true;
+            break;
+        case 'r':
+            myls_cmdline_cfg.sort_reverse = true;
+            break;
+        case 'U':
+            myls_cmdline_cfg.sort_by = SORT_BY_NONE;
+            break;
+        case 's':
+            myls_cmdline_cfg.print_blocks_size = true;
+            break;
+        case 'S':
+            myls_cmdline_cfg.sort_by = SORT_BY_SIZE;
+            break;
+        case 't':
+            myls_cmdline_cfg.sort_by = SORT_BY_TIME;
+            break;
+        case 'X':
+            myls_cmdline_cfg.sort_by = SORT_BY_EXTENSION;
+            break;
+        case '1':
+            myls_cmdline_cfg.list_by_line = true;
+            break;
+        /* 错误的选项，错误信息会自动输出，这里仅输出帮助信息并退出 */
+        case '?':
+            myerror(0, 0, "命令行参数解析失败，输入\"%s --help\"查看使用帮助", argv[0]);
+            exit(2);
+            break;
+        /* 下面是长选项 */
+        case 0:
+            switch (lopt) {
+            case 0:         /* --help */
+                usage(argv[0]);
+                exit(0);
+            case 1:         /* --version */
+                version();
+                exit(0);
+            case 2:         /* --color= */
+                if (optarg == NULL)
+                    myls_cmdline_cfg.use_color = true;
+                else if (!strcmp(optarg, "auto") || !strcmp(optarg, "always") || !strcmp(optarg, "yes"))
+                    myls_cmdline_cfg.use_color = true;
+                else if (!strcmp(optarg, "no") || !strcmp(optarg, "never") || !strcmp(optarg, "no"))
+                    myls_cmdline_cfg.use_color = false;
+                else {
+                    myerror(0, 0, "选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
+                        long_options[index].name, optarg, argv[0]);
+                    exit(2);
                 }
                 break;
+            case 3:         /* --sort= */
+                if (!strcmp(optarg, "none"))
+                    myls_cmdline_cfg.sort_by = SORT_BY_NONE;
+                else if (!strcmp(optarg, "size"))
+                    myls_cmdline_cfg.sort_by = SORT_BY_SIZE;
+                else if (!strcmp(optarg, "time"))
+                    myls_cmdline_cfg.sort_by = SORT_BY_TIME;
+                else if (!strcmp(optarg, "extension"))
+                    myls_cmdline_cfg.sort_by = SORT_BY_EXTENSION;
+                else {
+                    myerror(0, 0, "选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
+                        long_options[index].name, optarg, argv[0]);
+                    exit(2);
+                }
+            case 4:         /* --file-type */
+                myls_cmdline_cfg.print_exec_type = false;
+                myls_cmdline_cfg.print_classify = true;
+                break;
+            default:
+                break;
+            }
+            break;
+        default:
+            break;
         }
     }
 
@@ -490,18 +534,20 @@ void stat_to_word(struct files_t *files, struct word_len_t *max_len, struct stat
     if (myls_cmdline_cfg.list_long) {
         /* 获取文件所有者的用户名 */
         struct passwd *pwd = getpwuid(st->st_uid);
-       files->len.user = sprintf(files->word.user, "%s", pwd->pw_name);
+        if (pwd == NULL)
+            files->len.user = sprintf(files->word.user, "%d", st->st_uid);
+        else
+            files->len.user = sprintf(files->word.user, "%s", pwd->pw_name);
     }
     if (files->len.user > max_len->user)
         max_len->user = files->len.user;
 
     files->color = myls_cmdline_cfg.use_color ? color : "";
 
-    files->classify = "";
     if (myls_cmdline_cfg.print_classify && classify[0] != '*')
-        files->classify = classify;
+        strcat(files->word.name, classify);
     else if (myls_cmdline_cfg.print_exec_type && classify[0] == '*')
-        files->classify = classify;
+        strcat(files->word.name, classify);
 }
 
 void merge_word(struct files_t *files, struct word_len_t *max_len)
@@ -530,7 +576,13 @@ void merge_word(struct files_t *files, struct word_len_t *max_len)
     if (myls_cmdline_cfg.list_long)
         len += sprintf(p + len, "%*s ", max_len->time, files->word.time);
 
-    len += sprintf(p + len, "%s%-*s%s%s  ", files->color, max_len->name, files->word.name, files->classify, FSTR_DEF_COLOR);
+    if (myls_cmdline_cfg.use_color) 
+        p += sprintf(p + len, "%s", files->color);
+
+    len += sprintf(p + len, "%-*s  ", max_len->name, files->word.name);
+    
+    if (myls_cmdline_cfg.use_color) 
+        sprintf(p + len, "%s", FSTR_DEF_COLOR);
 
     files->len.word = len;
     if (max_len->word < files->len.word)
@@ -539,17 +591,17 @@ void merge_word(struct files_t *files, struct word_len_t *max_len)
 
 char **merge_cols(int cols, int *n, struct files_t *files, int files_count, struct word_len_t *max_len)
 {
-    int line = files_count / cols + !!(files_count % cols);
-    char **lines = (char **)malloc(line * sizeof(char *));
+    int rows = files_count / cols + !!(files_count % cols);
+    char **lines = (char **)malloc(rows * sizeof(char *));
     if (lines == NULL)
         myfatal(errno, 2, "内存申请错误");
-    memset(lines, 0, line * sizeof(char *));
+    memset(lines, 0, rows * sizeof(char *));
 
     for (int i = 0; i < files_count; i++) {
-        int index = i % line;
+        int index = i % rows;
 
         if (!lines[index]) {
-            if (!(lines[index] = (char *)malloc(10 + cols * max_len->word)))
+            if (!(lines[index] = (char *)malloc(1000)))
                 myfatal(errno, 2, "内存申请错误");
             lines[index][0] = 0;
         }
@@ -557,27 +609,31 @@ char **merge_cols(int cols, int *n, struct files_t *files, int files_count, stru
         strcat(lines[index], files[i].word.word);
     }
 
-    *n = line;
+    *n = rows;
     return lines;
 }
 
 /* 输出当前扫描的目录的所有文件信息 */
 void myls_dir(const char *dir)
 {
-    //int cols = 2;
-    //int c = myls.files_count / cols + !!(myls.files_count % cols);
-
     sort_files();
-
-    for (int i = 0; i < myls.files_count; i++) {
+    for (int i = 0; i < myls.files_count; i++) 
         merge_word(myls.files + (i), &myls.max_len);
-    }
 
-    myls.lines = merge_cols(1, &myls.lines_count, myls.files, myls.files_count, &myls.max_len);
+    int cols = (myls.window_cols - 1) / myls.max_len.word;
+    if (myls_cmdline_cfg.list_long || myls_cmdline_cfg.list_by_line)
+        cols = 1;
 
-    for (int i = 0; i < myls.lines_count; i++) {
+    myls.lines = merge_cols(cols, &myls.lines_count, myls.files, myls.files_count, &myls.max_len);
+
+    //printf("total: %d\n", myls.files_count);
+    //printf("cols: (%d - 1) / %d = %d\n", myls.window_cols, myls.max_len.word, cols);
+    //printf("rows: %d / %d + !!(%d %% %d) = %d\n\n", myls.files_count, cols, myls.files_count, cols, myls.files_count / cols + !!(myls.lines_count % cols));
+    for (int i = 0; i < myls.lines_count; i++) 
         printf("%s\n", myls.lines[i]);
-    }
+
+    //for (int i = 0; i < myls.files_count; i++) 
+    //    printf("%s\n", myls.files[i].word.word);
 }
 
 /* 将当前获得的文件添加到文件列表中。
@@ -621,12 +677,14 @@ void add_files(const char *files)
 
 int main(int argc, char *argv[])
 {
-    myutils_set_name(argv[0]);
     default_cfg();
-    parse_cmdline(argc, argv);
-    myutils_set_color_enabled(myls_cmdline_cfg.use_color);
 
+    parse_cmdline(argc, argv);
     getcwd(myls.cwd, sizeof(myls.cwd));
+
+    struct winsize size;
+    ioctl(STDIN_FILENO, TIOCGWINSZ, &size);
+    myls.window_cols = size.ws_col;
 
     char *dir = ".";
     int n = 0;
@@ -691,5 +749,9 @@ int main(int argc, char *argv[])
     } while (myls_cmdline_cfg.files_count > n);
 
     free(myls.files);
+    for (int i = 0; i < myls.lines_count; i++)
+        free(myls.lines[i]);
+    free(myls.lines);
+
     return myls.error;
 }
