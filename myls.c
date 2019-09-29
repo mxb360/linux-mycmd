@@ -103,7 +103,6 @@ void usage(const char *name)
     printf("                        auto, always, yes没有区别，表示使用颜色；\n");
     printf("                        no, never没有区别，表示不使用颜色\n");
     printf("                        可执行文件：绿色  目录：蓝色\n");
-    printf("                        因此在本软件中，该选项会被忽略\n");
     printf("  -d, --directory     列出目录自身信息，而不是目录下的内容\n");
     printf("  -f                  不排序，启用-aU，禁用-ls --color\n");
     printf("  -F, --classify      在每个输出项后追加文件的类型标识符\n");
