@@ -780,12 +780,13 @@ int main(int argc, char *argv[])
 
         closedir(dp);
         myls_dir(dir);
+
+        for (int i = 0; i < myls.lines_count; i++)
+            free(myls.lines[i]);
+        free(myls.lines);
     } while (myls_cmdline_cfg.files_count > n);
 
     free(myls.files);
-    for (int i = 0; i < myls.lines_count; i++)
-        free(myls.lines[i]);
-    free(myls.lines);
 
     return myls.error;
 }
