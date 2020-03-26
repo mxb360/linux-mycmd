@@ -112,49 +112,47 @@ struct myls_t {
 void usage(const char *name)
 {
     printf("用法：%s [选项]... [文件]...\n", name);
-    printf("列出“文件”的信息（默认当前目录）\n\n");
+    puts("列出“文件”的信息（默认当前目录）\n");
 
-    printf("选项：\n");
-    printf("  -a, --all             不隐藏任何以. 开始的项目\n");
-    printf("  -A, --almost-all      列出除. 及.. 以外的任何项目\n");
-    printf("  -C                    多列输出，这是默认的，除非有-l或者-1\n");
-    printf("      --color=WHEN      带颜色的输出，WHEN可以取值auto，always，yes，never，no，默认auto\n");
-    printf("                          auto, always, yes没有区别，表示使用颜色；\n");
-    printf("                          no, never没有区别，表示不使用颜色\n");
-    printf("                          可执行文件：绿色  目录：蓝色\n");
-    printf("  -d, --directory       列出目录自身信息，而不是目录下的内容\n");
-    printf("  -f                    不排序，启用-aU，禁用-ls --color\n");
-    printf("  -F, --classify        在每个输出项后追加文件的类型标识符\n");
-    printf("                          包括：可执行*  目录/  符号链接@  命令管道|  套接字=\n");
-    printf("      --file-type       同上，但是不输出* \n");
-    printf("  -h, --human-readable  当有-l或者-s时，按住易读的方式打印大小，如：1K 234M 2G\n");
-    printf("      --si              同上，但是按1000换算单位，而不是1024\n");
-    printf("  -i, --inode           打印文件节点号\n");
-    printf("  -l                    使用较长的格式列出更多的信息\n");
-    printf("  -L, --dereference     对于符号链接，显示链接指向的文件信息，而不是链接文件本身\n");
-    printf("  -s, --size            以块数形式显示每个文件分配的尺寸\n");
-    printf("  -S                    按照文件名对输出排序\n");
-    printf("      --sort=WORD       设置输出的排序方式。WORD可取none(-U) size(-S) time(-T)\n");
-    printf("                          默认的排序方式是按文件名排序（不区分大小写）\n");
-    printf("  -r, --reverse         按照指定的排序方式逆序输出\n");
-    printf("  -T                    按照文件创建时间对输出排序\n");
-    printf("  -U                    不对输出进行排序\n");
-    printf("  -1                    按照每个文件占一行的格式输出\n");
-    printf("      --help            显示此帮助信息并退出\n");
-    printf("      --version         显示版本信息并退出\n");
+    puts("选项：\n");
+    puts("  -a, --all             不隐藏任何以. 开始的项目");
+    puts("  -A, --almost-all      列出除. 及.. 以外的任何项目");
+    puts("  -C                    多列输出，这是默认的，除非有-l或者-1");
+    puts("      --color=WHEN      带颜色的输出，WHEN可以取值auto，always，yes，never，no，默认auto");
+    puts("                          auto, always, yes没有区别，表示使用颜色；");
+    puts("                          no, never没有区别，表示不使用颜色");
+    puts("                          可执行文件：绿色  目录：蓝色");
+    puts("  -d, --directory       列出目录自身信息，而不是目录下的内容");
+    puts("  -f                    不排序，启用-aU，禁用-ls --color");
+    puts("  -F, --classify        在每个输出项后追加文件的类型标识符");
+    puts("                          包括：可执行*  目录/  符号链接@  命令管道|  套接字=");
+    puts("      --file-type       同上，但是不输出* ");
+    puts("  -h, --human-readable  当有-l或者-s时，按住易读的方式打印大小，如：1K 234M 2G");
+    puts("      --si              同上，但是按1000换算单位，而不是1024");
+    puts("  -i, --inode           打印文件节点号");
+    puts("  -l                    使用较长的格式列出更多的信息");
+    puts("  -L, --dereference     对于符号链接，显示链接指向的文件信息，而不是链接文件本身");
+    puts("  -s, --size            以块数形式显示每个文件分配的尺寸");
+    puts("  -S                    按照文件名对输出排序");
+    puts("      --sort=WORD       设置输出的排序方式。WORD可取none(-U) size(-S) time(-T)");
+    puts("                          默认的排序方式是按文件名排序（不区分大小写）");
+    puts("  -r, --reverse         按照指定的排序方式逆序输出");
+    puts("  -T                    按照文件创建时间对输出排序");
+    puts("  -U                    不对输出进行排序");
+    puts("  -1                    按照每个文件占一行的格式输出");
+    puts("      --help            显示此帮助信息并退出");
+    puts("      --version         显示版本信息并退出\n");
 
-    printf("\n");
-    printf("退出状态：\n");
-    printf("    0  正常\n");
-    printf("    1  一般问题（列如：无法访问子文件夹）\n");
-    printf("    2  严重问题（列如：无法使用命令行参数）\n");
+    puts("退出状态：");
+    puts("    0  正常");
+    puts("    1  一般问题（列如：无法访问子文件夹）");
+    puts("    2  严重问题（列如：无法使用命令行参数）\n");
 
-    printf("\n");
-    printf("此软件是" PACKAGE "包的程序之一，" PACKAGE "包是GNU CoreUtils部分程序的简陋的仿写版本。\n");
-    printf("此软件是GNU CoreUtils程序 ls 的简单版本。\n");
-    printf("此软件在输出颜色、排版和内容上与 ls 有差异。命令行参数仅仅支持部分 ls 命令。\n");
-    printf("作者：" AUTHOR "  " UPDATE_DATE " \n");
-    printf("版本：" VERSION "\n");
+    puts("此软件是" PACKAGE "包的程序之一，" PACKAGE "包是GNU CoreUtils部分程序的简陋的仿写版本。");
+    puts("此软件是GNU CoreUtils程序 ls 的简单版本。");
+    puts("此软件在输出颜色、排版和内容上与 ls 有差异。命令行参数仅仅支持部分 ls 命令。");
+    puts("作者：" AUTHOR "  " UPDATE_DATE);
+    puts("版本：" VERSION);
 }
 
 /* 打印软件版本信息 */
