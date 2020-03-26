@@ -191,9 +191,9 @@ bool prompt(int num, const char *do_what, const char *file_type, const char *nam
     char buf[MAX_BUF_SIZE + 1];
 
     if (num > 0)
-        myprompt("删除%d个对象? [y/N] ", num);
+        myprompt("删除%d个对象? [yN] ", num);
     else
-        myprompt("%s%s\"%s\"? [y/N] ", do_what, file_type, name);
+        myprompt("%s%s\"%s\"? [yN] ", do_what, file_type, name);
     fflush(stdout);
     fgets(buf, MAX_BUF_SIZE, stdin);
 
@@ -214,6 +214,20 @@ bool is_root_dir(const char *path)
     int len = strlen(path);
     while (len > 0 && path[len - 1] == '/')  len--;
     return len == 0;
+}
+
+bool is_dot_or_double_dot(const char *path)
+{
+    int len = strlen(path);
+    while (len > 0 && path[len - 1] == '/')  len--;
+
+    if (len == 2 && path[0] == path[1] && path[0] == '.')
+        return true;
+    if (len == 1 && path[0] == '.')
+        return true;
+    if (path[len - 3] == '/' && path[len - 2] == path[len - 1] && path[len - 1] == '.')
+        return true;
+    return false;
 }
 
 int myrm_remove(const char *rm_type, int (*rm_func)(const char *), const char *name)
@@ -254,7 +268,7 @@ int remove_file(char *file)
         DIR *dp;
         struct dirent *direp;
         if ((dp = opendir(file)) == NULL) {
-            myerror("无法打开目录 \"%s\": %s", file, strerror(errno));
+            myerror("无法访问目录 \"%s\": %s", file, strerror(errno));
             return 1;
         }
 
@@ -265,6 +279,11 @@ int remove_file(char *file)
                 is_empty = false;
                 if (!myrm_cmdline_cfg.recursive)
                     break;
+
+                if (is_dot_or_double_dot(file)) {
+                    myerror("拒绝删除\".\"或者\"..\"目录，跳过目录 \"%s\"", file);
+                    return 1;
+                }
 
                 if (myrm_cmdline_cfg.preserve_root && is_root_dir(file)) {
                     myerror("根目录保护：递归删除根目录是非常危险的操作，已阻止。可使用“--no-preserve-root”取消此保护。");
@@ -292,7 +311,7 @@ int remove_file(char *file)
             return myrm_remove("空目录", rmdir, file);
 
         /* 删除当前目录 */
-        return myrm_cmdline_cfg.cancel ? 0 : myrm_remove("目录", rmdir, file);
+        return myrm_cmdline_cfg.cancel ? 0 : myrm_remove(is_empty ? "空目录" : "目录", rmdir, file);
     } 
 
     /* 删除当前文件 */
