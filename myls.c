@@ -1,25 +1,27 @@
-#include "myutils.h"
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <stdarg.h>
+#include <string.h>
+#include <ctype.h>
+#include <errno.h>
 #include <time.h>
 
+#include <unistd.h>
+#include <getopt.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <pwd.h>
-#include<sys/ioctl.h>
-#include<termios.h>
+#include <sys/ioctl.h>
+#include <termios.h>
 
 #define VERSION         "1.0"
 #define AUTHOR          "mxb360"
 #define UPDATE_DATE     "2019-9"
 #define PACKAGE         "Linux-MyCmd"
 
-#define MALLOC_SIZE       50
-
-#define SORT_BY_NONE      0
-#define SORT_BY_NAME      1
-#define SORT_BY_SIZE      2
-#define SORT_BY_TIME      3
-#define SORT_BY_EXTENSION 4
+/* 文件排序方式 */
+enum { SORT_BY_NONE, SORT_BY_NAME, SORT_BY_SIZE, SORT_BY_TIME, SORT_BY_EXTENSION };
 
 /* 全局，用于保存命令行参数的配置信息 */
 struct myls_cmdline_cfg_t {
@@ -39,6 +41,7 @@ struct myls_cmdline_cfg_t {
     int  powers;
     int  sort_by;
 
+    char *name;
     char **files;
     int  files_count;
 } myls_cmdline_cfg;
@@ -92,6 +95,19 @@ struct myls_t {
     int error;
 } myls;
 
+/* 特殊信息输出 */
+#define mymsg(name, color, title, fmt, args...)  \
+    fprintf(stderr, "%s: \033[%dm%s: \033[0m" fmt "\n", name, color, title, ##args)
+
+/* 致命错误信息输出并退出 */
+#define myfatal(fmt, args...)  ({ \
+    mymsg(myls_cmdline_cfg.name, 31, "fatal", fmt, ##args); \
+    exit(2); \
+})
+
+/* 错误信息输出 */
+#define myerror(fmt, args...)  mymsg(myls_cmdline_cfg.name, 31, "error", fmt, ##args)
+
 /* 打印使用帮助，由命令行“--help”触发 */
 void usage(const char *name)
 {
@@ -134,9 +150,9 @@ void usage(const char *name)
     printf("    2  严重问题（列如：无法使用命令行参数）\n");
 
     printf("\n");
-    printf("此软件是" PACKAGE "包的程序之一，" PACKAGE "包是GNU CoreUtils程序的简陋的仿写版本。\n");
+    printf("此软件是" PACKAGE "包的程序之一，" PACKAGE "包是GNU CoreUtils部分程序的简陋的仿写版本。\n");
     printf("此软件是GNU CoreUtils程序 ls 的简单版本。\n");
-    printf("此软件在输出颜色，排版上与 ls 有差异。命令行参数仅仅支持部分 ls 命令。\n");
+    printf("此软件在输出颜色、排版和内容上与 ls 有差异。命令行参数仅仅支持部分 ls 命令。\n");
     printf("作者：" AUTHOR "  " UPDATE_DATE " \n");
     printf("版本：" VERSION "\n");
 }
@@ -160,6 +176,7 @@ void parse_cmdline(int argc, char *argv[])
 {
     int index, lopt;
 
+    myls_cmdline_cfg.name = argv[0];
     const char *short_options = "aACdfFhilLrsStUX1";
     const struct option long_options[] = {
         {"all", no_argument, NULL, 'a'},
@@ -244,7 +261,7 @@ void parse_cmdline(int argc, char *argv[])
             break;
         /* 错误的选项，错误信息会自动输出，这里仅输出帮助信息并退出 */
         case '?':
-            myerror(0, 0, "命令行参数解析失败，输入\"%s --help\"查看使用帮助", argv[0]);
+            myerror("命令行参数解析失败，输入\"%s --help\"查看使用帮助", argv[0]);
             exit(2);
             break;
         /* 下面是长选项 */
@@ -264,7 +281,7 @@ void parse_cmdline(int argc, char *argv[])
                 else if (!strcmp(optarg, "no") || !strcmp(optarg, "never") || !strcmp(optarg, "no"))
                     myls_cmdline_cfg.use_color = false;
                 else {
-                    myerror(0, 0, "选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
+                    myerror("选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
                         long_options[index].name, optarg, argv[0]);
                     exit(2);
                 }
@@ -279,7 +296,7 @@ void parse_cmdline(int argc, char *argv[])
                 else if (!strcmp(optarg, "extension"))
                     myls_cmdline_cfg.sort_by = SORT_BY_EXTENSION;
                 else {
-                    myerror(0, 0, "选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
+                    myerror("选项\"--%s\"的参数\"%s\"无效，输入\"%s --help\"查看使用帮助", 
                         long_options[index].name, optarg, argv[0]);
                     exit(2);
                 }
@@ -458,7 +475,7 @@ void sort_files(void)
 /* 按照命令行指定的格式输出列表指定位置的文件 */
 void stat_to_word(struct files_t *files, struct word_len_t *max_len, struct stat *st)
 {
-    const char *color = FSTR_DEF_COLOR;
+    const char *color = "\033[0m";
     const char *classify = "";
 
     /* 获取文件权限 */
@@ -471,7 +488,7 @@ void stat_to_word(struct files_t *files, struct word_len_t *max_len, struct stat
     if (mode & S_IWUSR)
         str[2] = 'w';
     if (mode & S_IXUSR)
-        str[3] = 'x', color = FSTR_GREEN, classify = "*";
+        str[3] = 'x', color = "\033[32m", classify = "*";  /* GREEN color*/
     if (mode & S_IRGRP)
         str[4] = 'r';               /* 组的三个属性   */
     if (mode & S_IWGRP)
@@ -485,7 +502,7 @@ void stat_to_word(struct files_t *files, struct word_len_t *max_len, struct stat
     if (mode & S_IXOTH)
         str[9] = 'x';
     if (S_ISDIR(mode))
-        str[0] = 'd', color = FSTR_BLUE, classify = "/"; /* 文件夹        */
+        str[0] = 'd', color = "\033[34m", classify = "/"; /* 文件夹  BLUE color      */
     else if (S_ISCHR(mode))
         str[0] = 'c';               /* 字符设备      */
     else if (S_ISBLK(mode))
@@ -610,12 +627,12 @@ void merge_word(struct files_t *files, struct word_len_t *max_len)
         len += sprintf(p + len, "%*s ", max_len->time, files->word.time);
 
     if (myls_cmdline_cfg.use_color) 
-        p += sprintf(p + len, HIGHLIGHT "%s", files->color);
+        p += sprintf(p + len, "\033[1m%s", files->color);
 
     len += sprintf(p + len, "%-*s  ", max_len->name, files->word.name);
     
     if (myls_cmdline_cfg.use_color) 
-        sprintf(p + len, "%s", FSTR_DEF_COLOR);
+        sprintf(p + len, "\033[0m");
 
     files->len.word = len;
     if (max_len->word < files->len.word)
@@ -627,7 +644,7 @@ char **merge_cols(int cols, int *n, struct files_t *files, int files_count, stru
     int rows = files_count / cols + !!(files_count % cols);
     char **lines = (char **)malloc(rows * sizeof(char *));
     if (lines == NULL)
-        myfatal(errno, 2, "内存申请错误");
+        myfatal("malloc failed: %s", strerror(errno));
     memset(lines, 0, rows * sizeof(char *));
 
     for (int i = 0; i < files_count; i++) {
@@ -635,7 +652,7 @@ char **merge_cols(int cols, int *n, struct files_t *files, int files_count, stru
 
         if (!lines[index]) {
             if (!(lines[index] = (char *)malloc(1000)))
-                myfatal(errno, 2, "内存申请错误");
+                 myfatal("malloc failed: %s", strerror(errno));
             lines[index][0] = 0;
         }
 
@@ -675,17 +692,20 @@ void myls_dir(const char *dir)
  */
 void add_files(const char *files)
 {
+    #define MALLOC_SIZE       50
+
     /* 还没有给数组申请空间，尝试申请一段空间 */
     if (myls.max_files_count == 0) {
         if ((myls.files = (struct files_t *)malloc(MALLOC_SIZE * sizeof(struct files_t))) == NULL)
-            myfatal(errno, 2, "内存申请错误");
+            myfatal("malloc failed: %s", strerror(errno));
         myls.max_files_count += MALLOC_SIZE;
     }
 
     /* 当前数组的空间已经用完，尝试重新申请一段更长的空间 */
     if (myls.max_files_count <= myls.files_count) {
-        if ((myls.files = (struct files_t *)realloc(myls.files, (myls.max_files_count + MALLOC_SIZE) * sizeof(struct files_t))) == NULL)
-            myfatal(errno, 2, "内存申请错误");
+        if ((myls.files = (struct files_t *)realloc(myls.files, 
+                (myls.max_files_count + MALLOC_SIZE) * sizeof(struct files_t))) == NULL)
+            myfatal("malloc failed: %s", strerror(errno));
         myls.max_files_count += MALLOC_SIZE;
     }
 
@@ -693,7 +713,7 @@ void add_files(const char *files)
 
     /* 获取文件属性 */
     if ((myls_cmdline_cfg.print_dereference ? stat : lstat)(files, &st) < 0) {
-        myerror(errno, 0, "无法获取\"%s\"的属性", files);
+        myerror("无法获取\"%s\"的属性: %s", files, strerror(errno));
         myls.error = 1;
         return;
     }
@@ -710,7 +730,6 @@ void add_files(const char *files)
 
 int main(int argc, char *argv[])
 {
-    myutils_set_name(argv[0]);
     default_cfg();
 
     parse_cmdline(argc, argv);
@@ -736,7 +755,7 @@ int main(int argc, char *argv[])
             dir = myls_cmdline_cfg.files[n++];
 
         if (stat(dir, &st) < 0) {
-            myerror(errno, 0, "无法获取\"%s\"的属性", dir);
+            myerror("无法获取\"%s\"的属性: %s", dir, strerror(errno));
             myls.error = 1;
             continue;
         }
@@ -750,13 +769,13 @@ int main(int argc, char *argv[])
         }
 
         if ((dp = opendir(dir)) == NULL) {
-            myerror(errno, 0, "无法打开目录\"%s\"", dir);
+            myerror("无法打开目录\"%s\": %s", dir, strerror(errno));
             myls.error = 1;
             continue;
         }
 
         if (chdir(dir) < 0) {
-            myerror(errno, 0, "无法进入到目录\"%s\"", dir);
+            myerror("无法进入到目录\"%s\": %s", dir, strerror(errno));
             myls.error = 1;
             continue;
         }

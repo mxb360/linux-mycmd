@@ -2,14 +2,12 @@ CCFLG = -g -Wall
 
 all: myls
 
-myutils.o: myutils.c myutils.h
-	gcc -c myutils.c -o myutils.o $(CCFLG)
 
-%.o: %.c myutils.h
+%.o: %.c 
 	gcc -c $< -o $@ $(CCFLG)
 
-myls: myls.o myutils.o
-	gcc myls.o myutils.o -o bin/myls
+myls: myls.o 
+	gcc myls.o -o myls
 
 clean:
-	rm -rf *.o
+	rm -rf *.o myls
