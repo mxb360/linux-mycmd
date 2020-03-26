@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
@@ -150,7 +149,7 @@ void usage(const char *name)
 
     puts("此软件是" PACKAGE "包的程序之一，" PACKAGE "包是GNU CoreUtils部分程序的简陋的仿写版本。");
     puts("此软件是GNU CoreUtils程序 ls 的简单版本。");
-    puts("此软件在输出颜色、排版和内容上与 ls 有差异。命令行参数仅仅支持部分 ls 命令。");
+    puts("此软件在输出颜色、排版和内容上与 ls 有差异。命令行参数仅支持部分 ls 命令。");
     puts("作者：" AUTHOR "  " UPDATE_DATE);
     puts("版本：" VERSION);
 }
@@ -162,19 +161,15 @@ void version(void)
     printf("Written by " AUTHOR "  " UPDATE_DATE " \n");
 }
 
-/* 默认的命令行配置：在相应命令行参数未指定时的默认值 */
-void default_cfg(void)
-{
-    myls_cmdline_cfg.use_color = true;
-    myls_cmdline_cfg.sort_by = SORT_BY_NAME;
-}
-
 /* 解析命令行参数 */
 void parse_cmdline(int argc, char *argv[])
 {
     int index, lopt;
 
+    myls_cmdline_cfg.use_color = true;
+    myls_cmdline_cfg.sort_by = SORT_BY_NAME;
     myls_cmdline_cfg.name = argv[0];
+
     const char *short_options = "aACdfFhilLrsStUX1";
     const struct option long_options[] = {
         {"all", no_argument, NULL, 'a'},
@@ -728,8 +723,6 @@ void add_files(const char *files)
 
 int main(int argc, char *argv[])
 {
-    default_cfg();
-
     parse_cmdline(argc, argv);
     getcwd(myls.cwd, sizeof(myls.cwd));
 
