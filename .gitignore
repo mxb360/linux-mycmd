@@ -1,3 +1,5 @@
 *.vscode
 *.o
+move
 myls
+myrm

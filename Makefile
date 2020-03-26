@@ -1,6 +1,6 @@
 CCFLG = -g -Wall
 
-all: myls
+all: myls myrm
 
 
 %.o: %.c 
@@ -9,5 +9,8 @@ all: myls
 myls: myls.o 
 	gcc myls.o -o myls
 
+myrm: myrm.o 
+	gcc myrm.o -o myrm
+
 clean:
-	rm -rf *.o myls
+	rm -rf *.o myls myrm
