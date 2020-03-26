@@ -507,8 +507,8 @@ void stat_to_word(struct files_t *files, struct word_len_t *max_len, struct stat
         str[0] = 'c';               /* 字符设备      */
     else if (S_ISBLK(mode))
         str[0] = 'b';               /* 块设备        */
-    else if (S_ISLNK(mode))
-        classify = "@";
+    else if (S_ISLNK(mode))        
+        str[0] = 'l', color = "\033[36m", classify = "@";   /* 链接  CYAN color  */
     else if (S_ISFIFO(mode))
         classify = "|";
 
